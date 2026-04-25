@@ -1,5 +1,8 @@
 package org.nur.server;
 
+import org.nur.exception.ServerException;
+import org.nur.protocol.RespParser;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -29,7 +32,7 @@ public class KVServer {
             }
 
         } catch (IOException e) {
-            System.err.println("[Server] Fatal error: " + e.getMessage());
+            throw new ServerException("[Server] Fatal error", e);
         }
     }
 
@@ -38,18 +41,16 @@ public class KVServer {
         System.out.println("[" + clientAddr + "] Connected");
 
         try (socket;
-                var reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 var writer = new PrintWriter(socket.getOutputStream(), true)) {
 
-            String line;
+            var parser = new RespParser(socket.getInputStream());
+            var command = parser.parse();
+            System.out.println("[" + clientAddr + "] Received: " + command);
 
-            while ((line = reader.readLine()) != null) {
-                System.out.println("[" + clientAddr + "] Received: " + line);
-                writer.println("OK");
-            }
+            writer.println("OK");
 
         } catch (IOException e) {
-            System.err.println("[" + clientAddr + "] Connection error: " + e.getMessage());
+            throw new ServerException("[" + clientAddr + "] Connection error", e);
         }
 
         System.out.println("[" + clientAddr + "] Disconnected");
