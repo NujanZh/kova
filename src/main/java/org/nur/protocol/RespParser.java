@@ -1,5 +1,8 @@
 package org.nur.protocol;
 
+import org.nur.exception.ClientDisconnectedException;
+import org.nur.exception.RespProtocolException;
+
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,11 +28,11 @@ public class RespParser {
                 case ':' -> readInteger();
                 case '+' -> readSimpleString();
                 case '-' -> readError();
-                case -1 -> throw new RuntimeException("Client disconnected");
-                default -> throw new IllegalStateException("Unexpected value: " + type);
+                case -1 -> throw new ClientDisconnectedException();
+                default -> throw new RespProtocolException("Unexpected value: " + type);
             };
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RespProtocolException(e.getMessage());
         }
     }
 
@@ -49,7 +52,7 @@ public class RespParser {
         return new RespValue.Array(elements);
     }
 
-    private RespValue.BulkString readBulkString() throws IOException {
+    private RespValue.BulkString readBulkString() {
         int len = readLength();
 
         if (len == -1) {
@@ -58,14 +61,18 @@ public class RespParser {
 
         byte[] data = new byte[len];
 
-        int totalRead = 0;
+        try {
+            int totalRead = 0;
 
-        while (totalRead < len) {
-            int read = reader.read(data, totalRead, len - totalRead);
-            if (read == -1) {
-                throw new RuntimeException("Stream ended before reading full bulk string");
+            while (totalRead < len) {
+                int read = reader.read(data, totalRead, len - totalRead);
+                if (read == -1) {
+                    throw new RespProtocolException("Stream ended before reading full bulk string");
+                }
+                totalRead += read;
             }
-            totalRead += read;
+        } catch (IOException e) {
+            throw new RespProtocolException(e.getMessage());
         }
 
         readLine();
@@ -95,7 +102,7 @@ public class RespParser {
 
     private int parseNumber(byte[] line) {
         if (line.length == 0) {
-            throw new RuntimeException("Empty line");
+            throw new RespProtocolException("Empty line");
         }
 
         int result = 0;
@@ -110,7 +117,7 @@ public class RespParser {
         for (int i = start; i < line.length; i++) {
             byte b = line[i];
             if (b < '0' || b > '9') {
-                throw new RuntimeException("Invalid character in number: " + (char) b);
+                throw new RespProtocolException("Invalid character in number: " + (char) b);
             }
 
             result = result * 10 + (b - '0');
@@ -123,21 +130,29 @@ public class RespParser {
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             int b;
+            boolean seenAnyByte = false;
+
             while ((b = reader.read()) != -1) {
+                seenAnyByte = true;
                 if (b == '\r') {
                     int next = reader.read();
                     if (next == '\n') {
                         break;
                     } else {
-                        throw new RuntimeException("Invalid line");
+                        throw new RespProtocolException(
+                                "Expected \\n after \\r, got " + (char) next);
                     }
                 }
                 buffer.write(b);
             }
 
+            if (!seenAnyByte) {
+                throw new RespProtocolException("Stream ended before reading line");
+            }
+
             return buffer.toByteArray();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RespProtocolException(e.getMessage());
         }
     }
 }

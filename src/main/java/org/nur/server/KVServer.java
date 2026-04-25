@@ -1,5 +1,7 @@
 package org.nur.server;
 
+import org.nur.exception.ClientDisconnectedException;
+import org.nur.exception.RespProtocolException;
 import org.nur.exception.ServerException;
 import org.nur.protocol.RespParser;
 
@@ -41,18 +43,24 @@ public class KVServer {
         System.out.println("[" + clientAddr + "] Connected");
 
         try (socket;
-                var writer = new PrintWriter(socket.getOutputStream(), true)) {
+                var outputStream = socket.getOutputStream()) {
 
             var parser = new RespParser(socket.getInputStream());
-            var command = parser.parse();
-            System.out.println("[" + clientAddr + "] Received: " + command);
 
-            writer.println("OK");
+            while (true) {
+                var command = parser.parse();
+                System.out.println("[" + clientAddr + "] Received: " + command);
 
+                outputStream.write("+OK\r\n".getBytes());
+                outputStream.flush();
+            }
+
+        } catch (ClientDisconnectedException ignored) {
+            System.out.println("[" + clientAddr + "] Disconnected");
+        } catch (RespProtocolException e) {
+            System.out.println("[" + clientAddr + "] Protocol error: " + e.getMessage());
         } catch (IOException e) {
             throw new ServerException("[" + clientAddr + "] Connection error", e);
         }
-
-        System.out.println("[" + clientAddr + "] Disconnected");
     }
 }

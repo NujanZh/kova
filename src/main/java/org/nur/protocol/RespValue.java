@@ -8,7 +8,6 @@ public sealed interface RespValue
                 RespValue.Integer,
                 RespValue.BulkString,
                 RespValue.Array {
-    record SimpleString(String value) implements RespValue {}
 
     record Error(String code, String message) implements RespValue {
         static Error of(String raw) {
@@ -26,6 +25,8 @@ public sealed interface RespValue
                     "WRONGTYPE", "Operation against a key holding the wrong kind of value");
         }
     }
+
+    record SimpleString(String value) implements RespValue {}
 
     record Integer(long value) implements RespValue {}
 
