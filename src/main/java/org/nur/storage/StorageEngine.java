@@ -9,13 +9,10 @@ public class StorageEngine {
         }
     }
 
-    private static final StorageEngine instance = new StorageEngine();
-    private final ConcurrentHashMap<String, Entry> storage = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Entry> storage;
 
-    private StorageEngine() {}
-
-    public static StorageEngine getInstance() {
-        return instance;
+    public StorageEngine() {
+        this.storage = new ConcurrentHashMap<>();
     }
 
     public void set(String key, String value) {
@@ -54,11 +51,16 @@ public class StorageEngine {
             return false;
         }
 
-        Entry entry = storage.get(key);
-        if (entry == null) return false;
-
         long newExpiryTime = System.currentTimeMillis() + ttlSeconds * 1000;
-        storage.put(key, new Entry(entry.value(), newExpiryTime));
-        return true;
+        boolean[] updated = {false};
+
+        storage.computeIfPresent(
+                key,
+                (k, existing) -> {
+                    updated[0] = true;
+                    return new Entry(existing.value(), newExpiryTime);
+                });
+
+        return updated[0];
     }
 }
