@@ -10,17 +10,17 @@ public sealed interface RespValue
                 RespValue.Array {
 
     record Error(String code, String message) implements RespValue {
-        static Error of(String raw) {
+        public static Error of(String raw) {
             int space = raw.indexOf(' ');
             if (space == -1) return new Error(raw, "");
             return new Error(raw.substring(0, space), raw.substring(space + 1));
         }
 
-        static Error err(String message) {
+        public static Error err(String message) {
             return new Error("ERR", message);
         }
 
-        static Error wrongType() {
+        public static Error wrongType() {
             return new Error(
                     "WRONGTYPE", "Operation against a key holding the wrong kind of value");
         }
