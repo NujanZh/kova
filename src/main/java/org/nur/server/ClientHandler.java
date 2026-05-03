@@ -1,9 +1,12 @@
 package org.nur.server;
 
+import org.nur.commands.CommandHandler;
 import org.nur.exception.ClientDisconnectedException;
 import org.nur.exception.RespProtocolException;
 import org.nur.exception.ServerException;
 import org.nur.protocol.RespParser;
+import org.nur.protocol.RespWriter;
+import org.nur.storage.StorageEngine;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -11,9 +14,11 @@ import java.net.Socket;
 public class ClientHandler implements Runnable {
 
     private final Socket socket;
+    private final CommandHandler handler;
 
-    public ClientHandler(Socket socket) {
+    public ClientHandler(Socket socket, StorageEngine storageEngine) {
         this.socket = socket;
+        this.handler = new CommandHandler(storageEngine);
     }
 
     @Override
@@ -25,13 +30,13 @@ public class ClientHandler implements Runnable {
                 var outputStream = socket.getOutputStream()) {
 
             var parser = new RespParser(socket.getInputStream());
+            var writer = new RespWriter(outputStream);
 
             while (true) {
                 var command = parser.parse();
                 System.out.println("[" + clientAddr + "] Received: " + command);
-
-                outputStream.write("+OK\r\n".getBytes());
-                outputStream.flush();
+                var result = this.handler.handle(command);
+                writer.write(result);
             }
 
         } catch (ClientDisconnectedException ignored) {

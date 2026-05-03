@@ -1,6 +1,7 @@
 package org.nur.server;
 
 import org.nur.exception.ServerException;
+import org.nur.storage.StorageEngine;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -22,12 +23,14 @@ public class KVServer {
                                     executor.shutdown();
                                 }));
 
+        StorageEngine storageEngine = new StorageEngine();
+
         try (var serverSocket = new ServerSocket(PORT)) {
             System.out.println("[Server] Started on port " + PORT);
 
             while (!executor.isShutdown()) {
                 Socket clientSocket = serverSocket.accept();
-                executor.execute(new ClientHandler(clientSocket));
+                executor.execute(new ClientHandler(clientSocket, storageEngine));
             }
 
         } catch (IOException e) {
