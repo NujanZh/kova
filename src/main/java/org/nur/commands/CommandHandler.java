@@ -1,16 +1,20 @@
 package org.nur.commands;
 
+import org.nur.persistence.AofWriter;
 import org.nur.protocol.RespValue;
 import org.nur.storage.StorageEngine;
 
+import java.io.IOException;
 import java.util.List;
 
 public class CommandHandler {
 
     private final StorageEngine storageEngine;
+    private final AofWriter aofWriter;
 
-    public CommandHandler(StorageEngine storageEngine) {
+    public CommandHandler(StorageEngine storageEngine, AofWriter aofWriter) {
         this.storageEngine = storageEngine;
+        this.aofWriter = aofWriter;
     }
 
     public RespValue handle(RespValue command) {
@@ -31,6 +35,7 @@ public class CommandHandler {
                 case "EXISTS" -> handleExists(elements);
                 case "EXPIRE" -> handleExpire(elements);
                 case "TTL" -> handleTtl(elements);
+                case "EXPIREAT" -> handleExpireAt(elements);
                 default -> RespValue.Error.err("unknown command '" + operation + "'");
             };
         } else {
@@ -47,6 +52,7 @@ public class CommandHandler {
         }
 
         storageEngine.set(key, value);
+        appendAof(command);
 
         return new RespValue.SimpleString("OK");
     }
@@ -68,7 +74,14 @@ public class CommandHandler {
             return RespValue.Error.err("wrong number of arguments for 'DEL' command");
         }
 
-        return new RespValue.Integer(storageEngine.delete(key) ? 1 : 0);
+        boolean deleted = storageEngine.delete(key);
+
+        if (deleted) {
+            appendAof(command);
+            return new RespValue.Integer(1);
+        }
+
+        return new RespValue.Integer(0);
     }
 
     private RespValue handleExists(List<RespValue> command) {
@@ -91,7 +104,36 @@ public class CommandHandler {
 
         try {
             long ttl = Long.parseLong(seconds);
-            return new RespValue.Integer(storageEngine.expire(key, ttl) ? 1 : 0);
+            long absoluteTtl = System.currentTimeMillis() + ttl * 1000;
+
+            boolean updated = storageEngine.expire(key, ttl);
+
+            if (updated) {
+                List<RespValue> aofCommand =
+                        List.of(
+                                new RespValue.BulkString("EXPIRE"),
+                                new RespValue.BulkString(key),
+                                new RespValue.BulkString(String.valueOf(absoluteTtl)));
+                appendAof(aofCommand);
+            }
+
+            return new RespValue.Integer(updated ? 1 : 0);
+        } catch (NumberFormatException e) {
+            return RespValue.Error.err("value is not an integer or out of range");
+        }
+    }
+
+    private RespValue handleExpireAt(List<RespValue> command) {
+        String key = extractString(command, 1);
+        String epochStr = extractString(command, 2);
+
+        if (key == null || epochStr == null) {
+            return RespValue.Error.err("wrong number of arguments for 'EXPIRE' command");
+        }
+
+        try {
+            long epoch = Long.parseLong(epochStr);
+            return new RespValue.Integer(storageEngine.expireAt(key, epoch) ? 1 : 0);
         } catch (NumberFormatException e) {
             return RespValue.Error.err("value is not an integer or out of range");
         }
@@ -114,5 +156,14 @@ public class CommandHandler {
             return null;
         }
         return value;
+    }
+
+    private void appendAof(List<RespValue> command) {
+        try {
+            RespValue.Array aofInput = new RespValue.Array(command);
+            aofWriter.append(aofInput);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

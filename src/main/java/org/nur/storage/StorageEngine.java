@@ -63,4 +63,17 @@ public class StorageEngine {
 
         return updated[0];
     }
+
+    public boolean expireAt(String key, long epochMillis) {
+        boolean[] updated = {false};
+
+        storage.computeIfPresent(
+                key,
+                (k, existing) -> {
+                    updated[0] = true;
+                    return new Entry(existing.value(), epochMillis);
+                });
+
+        return updated[0];
+    }
 }

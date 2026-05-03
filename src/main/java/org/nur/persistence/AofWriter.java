@@ -29,7 +29,12 @@ public class AofWriter {
 
     public void append(RespValue command) throws IOException {
         byte[] bytes = RespSerializer.serialize(command).getBytes(StandardCharsets.UTF_8);
-        int writtenBytes = channel.write(ByteBuffer.wrap(bytes));
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        int writtenBytes = 0;
+
+        if (buffer.hasRemaining()) {
+            writtenBytes = channel.write(buffer);
+        }
 
         if (writtenBytes != bytes.length) {
             throw new IOException("Failed to write all bytes");
