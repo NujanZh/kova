@@ -6,11 +6,15 @@ import org.nur.exception.RespProtocolException;
 import org.nur.exception.ServerException;
 import org.nur.protocol.RespParser;
 import org.nur.protocol.RespWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.Socket;
 
 public class ClientHandler implements Runnable {
+
+    private static final Logger log = LoggerFactory.getLogger(ClientHandler.class);
 
     private final Socket socket;
     private final CommandHandler handler;
@@ -23,7 +27,7 @@ public class ClientHandler implements Runnable {
     @Override
     public void run() {
         String clientAddr = socket.getRemoteSocketAddress().toString();
-        System.out.println("[" + clientAddr + "] Connected");
+        log.info("Client connected: {}", clientAddr);
 
         try (socket;
                 var outputStream = socket.getOutputStream()) {
@@ -33,17 +37,19 @@ public class ClientHandler implements Runnable {
 
             while (true) {
                 var command = parser.parse();
-                System.out.println("[" + clientAddr + "] Received: " + command);
+                log.debug("Received from {}: {}", clientAddr, command);
                 var result = this.handler.handle(command);
+                log.debug("Responding to {}: {}", clientAddr, result);
                 writer.write(result);
             }
 
         } catch (ClientDisconnectedException ignored) {
-            System.out.println("[" + clientAddr + "] Disconnected");
+            log.info("Client disconnected: {}", clientAddr);
         } catch (RespProtocolException e) {
-            System.out.println("[" + clientAddr + "] Protocol error: " + e.getMessage());
+            log.warn("Protocol error from {}: {}", clientAddr, e.getMessage());
         } catch (IOException e) {
-            throw new ServerException("[" + clientAddr + "] Connection error", e);
+            log.error("Connection error from {}", clientAddr, e);
+            throw new ServerException("Connection error with " + clientAddr, e);
         }
     }
 }
