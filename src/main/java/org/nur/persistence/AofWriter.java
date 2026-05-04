@@ -76,7 +76,7 @@ public class AofWriter implements AutoCloseable {
 
     private byte[] takeBytes() throws InterruptedException {
         if (running) {
-            queue.take();
+            return queue.take();
         }
 
         return queue.poll();

@@ -4,7 +4,6 @@ import org.nur.persistence.AofWriter;
 import org.nur.protocol.RespValue;
 import org.nur.storage.StorageEngine;
 
-import java.io.IOException;
 import java.util.List;
 
 public class CommandHandler {
@@ -15,6 +14,10 @@ public class CommandHandler {
     public CommandHandler(StorageEngine storageEngine, AofWriter aofWriter) {
         this.storageEngine = storageEngine;
         this.aofWriter = aofWriter;
+    }
+
+    public CommandHandler(StorageEngine storageEngine) {
+        this(storageEngine, null);
     }
 
     public RespValue handle(RespValue command) {
@@ -34,8 +37,8 @@ public class CommandHandler {
                 case "DEL" -> handleDel(elements);
                 case "EXISTS" -> handleExists(elements);
                 case "EXPIRE" -> handleExpire(elements);
-                case "TTL" -> handleTtl(elements);
                 case "EXPIREAT" -> handleExpireAt(elements);
+                case "TTL" -> handleTtl(elements);
                 default -> RespValue.Error.err("unknown command '" + operation + "'");
             };
         } else {
@@ -111,7 +114,7 @@ public class CommandHandler {
             if (updated) {
                 List<RespValue> aofCommand =
                         List.of(
-                                new RespValue.BulkString("EXPIRE"),
+                                new RespValue.BulkString("EXPIREAT"),
                                 new RespValue.BulkString(key),
                                 new RespValue.BulkString(String.valueOf(absoluteTtl)));
                 appendAof(aofCommand);
@@ -128,7 +131,7 @@ public class CommandHandler {
         String epochStr = extractString(command, 2);
 
         if (key == null || epochStr == null) {
-            return RespValue.Error.err("wrong number of arguments for 'EXPIRE' command");
+            return RespValue.Error.err("wrong number of arguments for 'EXPIREAT' command");
         }
 
         try {
@@ -159,11 +162,8 @@ public class CommandHandler {
     }
 
     private void appendAof(List<RespValue> command) {
-        try {
-            RespValue.Array aofInput = new RespValue.Array(command);
-            aofWriter.append(aofInput);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        if (aofWriter == null) return;
+        RespValue.Array aofInput = new RespValue.Array(command);
+        aofWriter.append(aofInput);
     }
 }

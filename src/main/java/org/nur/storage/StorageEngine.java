@@ -38,7 +38,9 @@ public class StorageEngine {
     }
 
     public boolean delete(String key) {
-        return storage.remove(key) != null;
+        Entry entry = storage.get(key);
+        if (entry != null && entry.isExpired()) return false;
+        return storage.remove(key, entry);
     }
 
     public boolean exists(String key) {
@@ -47,11 +49,7 @@ public class StorageEngine {
 
     public boolean expire(String key, long epochMillis) {
         if (epochMillis <= 0) {
-            if (exists(key)) {
-                storage.remove(key);
-                return true;
-            }
-            return false;
+            return storage.remove(key) != null;
         }
 
         boolean[] updated = {false};
@@ -59,6 +57,7 @@ public class StorageEngine {
         storage.computeIfPresent(
                 key,
                 (k, existing) -> {
+                    if (existing.isExpired()) return existing;
                     updated[0] = true;
                     return new Entry(existing.value(), epochMillis);
                 });

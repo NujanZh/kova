@@ -6,7 +6,6 @@ import org.nur.exception.RespProtocolException;
 import org.nur.exception.ServerException;
 import org.nur.protocol.RespParser;
 import org.nur.protocol.RespWriter;
-import org.nur.storage.StorageEngine;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -16,9 +15,9 @@ public class ClientHandler implements Runnable {
     private final Socket socket;
     private final CommandHandler handler;
 
-    public ClientHandler(Socket socket, StorageEngine storageEngine) {
+    public ClientHandler(Socket socket, CommandHandler handler) {
         this.socket = socket;
-        this.handler = new CommandHandler(storageEngine);
+        this.handler = handler;
     }
 
     @Override
