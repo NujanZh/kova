@@ -91,21 +91,19 @@ public class RespParser {
     }
 
     private RespValue.Integer readInteger() {
-        byte[] line = readLine();
-        return new RespValue.Integer(parseNumber(line));
+        return new RespValue.Integer(parseNumber(readLine()));
     }
 
     private int readLength() {
-        byte[] line = readLine();
-        return parseNumber(line);
+        return (int) parseNumber(readLine());
     }
 
-    private int parseNumber(byte[] line) {
+    private long parseNumber(byte[] line) {
         if (line.length == 0) {
             throw new RespProtocolException("Empty line");
         }
 
-        int result = 0;
+        long result = 0;
         boolean negative = false;
         int start = 0;
 

@@ -45,26 +45,15 @@ public class StorageEngine {
         return get(key) != null;
     }
 
-    public boolean expire(String key, long ttlSeconds) {
-        if (ttlSeconds <= 0) {
-            storage.remove(key);
+    public boolean expire(String key, long epochMillis) {
+        if (epochMillis <= 0) {
+            if (exists(key)) {
+                storage.remove(key);
+                return true;
+            }
             return false;
         }
 
-        long newExpiryTime = System.currentTimeMillis() + ttlSeconds * 1000;
-        boolean[] updated = {false};
-
-        storage.computeIfPresent(
-                key,
-                (k, existing) -> {
-                    updated[0] = true;
-                    return new Entry(existing.value(), newExpiryTime);
-                });
-
-        return updated[0];
-    }
-
-    public boolean expireAt(String key, long epochMillis) {
         boolean[] updated = {false};
 
         storage.computeIfPresent(

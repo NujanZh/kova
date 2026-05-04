@@ -106,7 +106,7 @@ public class CommandHandler {
             long ttl = Long.parseLong(seconds);
             long absoluteTtl = System.currentTimeMillis() + ttl * 1000;
 
-            boolean updated = storageEngine.expire(key, ttl);
+            boolean updated = storageEngine.expire(key, absoluteTtl);
 
             if (updated) {
                 List<RespValue> aofCommand =
@@ -133,7 +133,7 @@ public class CommandHandler {
 
         try {
             long epoch = Long.parseLong(epochStr);
-            return new RespValue.Integer(storageEngine.expireAt(key, epoch) ? 1 : 0);
+            return new RespValue.Integer(storageEngine.expire(key, epoch) ? 1 : 0);
         } catch (NumberFormatException e) {
             return RespValue.Error.err("value is not an integer or out of range");
         }
