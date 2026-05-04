@@ -39,7 +39,16 @@ public class StorageEngine {
 
     public boolean delete(String key) {
         Entry entry = storage.get(key);
-        if (entry != null && entry.isExpired()) return false;
+
+        if (entry == null) {
+            return false;
+        }
+
+        if (entry.isExpired()) {
+            storage.remove(key, entry);
+            return false;
+        }
+
         return storage.remove(key, entry);
     }
 

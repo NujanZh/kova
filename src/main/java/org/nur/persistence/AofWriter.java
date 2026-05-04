@@ -1,5 +1,7 @@
 package org.nur.persistence;
 
+import org.nur.exception.AofQueueFullException;
+import org.nur.exception.AofWriteException;
 import org.nur.protocol.RespSerializer;
 import org.nur.protocol.RespValue;
 
@@ -11,10 +13,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 
 public class AofWriter implements AutoCloseable {
 
-    private final BlockingDeque<byte[]> queue = new LinkedBlockingDeque<>();
+    private static final int QUEUE_CAPACITY = 4096;
+    private static final int OFFER_TIMEOUT_MS = 100;
+
+    private final BlockingDeque<byte[]> queue = new LinkedBlockingDeque<>(QUEUE_CAPACITY);
     private final Thread worker;
     private volatile boolean running = true;
 
@@ -32,15 +38,21 @@ public class AofWriter implements AutoCloseable {
             worker = new Thread(this::processQueue, "AOF Writer");
             worker.start();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new AofWriteException("Failed to open AOF file", e);
         }
     }
 
     public void append(RespValue command) {
         byte[] bytes = RespSerializer.serialize(command).getBytes(StandardCharsets.UTF_8);
 
-        if (!queue.offer(bytes)) {
-            throw new RuntimeException("Failed to append to AOF");
+        try {
+            boolean accepted = queue.offer(bytes, OFFER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            if (!accepted) {
+                throw new AofQueueFullException(OFFER_TIMEOUT_MS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AofWriteException("Interrupted while waiting to append to AOF", e);
         }
     }
 
@@ -51,7 +63,8 @@ public class AofWriter implements AutoCloseable {
         try {
             worker.join();
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
+            throw new AofWriteException("Interrupted while waiting for AOF writer to drain", e);
         }
 
         channel.close();
@@ -59,27 +72,18 @@ public class AofWriter implements AutoCloseable {
 
     private void processQueue() {
         try {
-            while (shouldContinue()) {
-                byte[] bytes = takeBytes();
+            while (running || !queue.isEmpty()) {
+                byte[] bytes = queue.poll(OFFER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                 if (bytes != null) {
                     writeBytes(bytes);
                 }
             }
-        } catch (IOException | InterruptedException e) {
-            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AofWriteException("AOF writer interrupted", e);
+        } catch (IOException e) {
+            throw new AofWriteException("AOF writer I/O error", e);
         }
-    }
-
-    private boolean shouldContinue() {
-        return running || !queue.isEmpty();
-    }
-
-    private byte[] takeBytes() throws InterruptedException {
-        if (running) {
-            return queue.take();
-        }
-
-        return queue.poll();
     }
 
     private void writeBytes(byte[] bytes) throws IOException {

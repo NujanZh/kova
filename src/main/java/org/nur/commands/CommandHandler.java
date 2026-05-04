@@ -1,5 +1,6 @@
 package org.nur.commands;
 
+import org.nur.exception.ArityException;
 import org.nur.persistence.AofWriter;
 import org.nur.protocol.RespValue;
 import org.nur.storage.StorageEngine;
@@ -20,90 +21,65 @@ public class CommandHandler {
         this(storageEngine, null);
     }
 
-    public RespValue handle(RespValue command) {
-        if (!(command instanceof RespValue.Array(List<RespValue> elements))) {
+    public RespValue handle(RespValue input) {
+        if (!(input instanceof RespValue.Array(List<RespValue> elements)) || elements.isEmpty()) {
             return RespValue.Error.err("expected array command");
         }
 
-        if (elements.isEmpty()) {
-            return RespValue.Error.err("empty command");
+        Command command = Command.parse(elements);
+
+        if (command == null) {
+            return RespValue.Error.err("wrong number of arguments for command");
         }
 
-        if ((elements.getFirst() instanceof RespValue.BulkString(String operation))) {
-            return switch (operation.toUpperCase()) {
+        try {
+            return switch (command.name()) {
                 case "PING" -> new RespValue.SimpleString("PONG");
-                case "SET" -> handleSet(elements);
-                case "GET" -> handleGet(elements);
-                case "DEL" -> handleDel(elements);
-                case "EXISTS" -> handleExists(elements);
-                case "EXPIRE" -> handleExpire(elements);
-                case "EXPIREAT" -> handleExpireAt(elements);
-                case "TTL" -> handleTtl(elements);
-                default -> RespValue.Error.err("unknown command '" + operation + "'");
+                case "SET" -> handleSet(command);
+                case "GET" -> handleGet(command);
+                case "DEL" -> handleDel(command);
+                case "EXISTS" -> handleExists(command);
+                case "EXPIRE" -> handleExpire(command);
+                case "EXPIREAT" -> handleExpireAt(command);
+                case "TTL" -> handleTtl(command);
+                default -> RespValue.Error.err("unknown command '" + command.name() + "'");
             };
-        } else {
-            return RespValue.Error.err("wrong number of arguments for command");
+        } catch (ArityException e) {
+            return RespValue.Error.err(e.getMessage());
         }
     }
 
-    private RespValue handleSet(List<RespValue> command) {
-        String key = extractString(command, 1);
-        String value = extractString(command, 2);
-
-        if (key == null || value == null) {
-            return RespValue.Error.err("wrong number of arguments for 'SET' command");
-        }
+    private RespValue handleSet(Command command) {
+        String key = command.requeireString(0);
+        String value = command.requeireString(1);
 
         storageEngine.set(key, value);
-        appendAof(command);
-
+        appendAof(command.args());
         return new RespValue.SimpleString("OK");
     }
 
-    private RespValue handleGet(List<RespValue> command) {
-        String key = extractString(command, 1);
-
-        if (key == null) {
-            return RespValue.Error.err("wrong number of arguments for 'GET' command");
-        }
-
+    private RespValue handleGet(Command command) {
+        String key = command.requeireString(0);
         return new RespValue.BulkString(storageEngine.get(key));
     }
 
-    private RespValue handleDel(List<RespValue> command) {
-        String key = extractString(command, 1);
-
-        if (key == null) {
-            return RespValue.Error.err("wrong number of arguments for 'DEL' command");
-        }
+    private RespValue handleDel(Command command) {
+        String key = command.requeireString(0);
 
         boolean deleted = storageEngine.delete(key);
+        if (deleted) appendAof(command.args());
 
-        if (deleted) {
-            appendAof(command);
-            return new RespValue.Integer(1);
-        }
-
-        return new RespValue.Integer(0);
+        return new RespValue.Integer(deleted ? 1 : 0);
     }
 
-    private RespValue handleExists(List<RespValue> command) {
-        String key = extractString(command, 1);
-
-        if (key == null) {
-            return RespValue.Error.err("wrong number of arguments for 'EXISTS' command");
-        }
-
+    private RespValue handleExists(Command command) {
+        String key = command.requeireString(0);
         return new RespValue.Integer(storageEngine.exists(key) ? 1 : 0);
     }
 
-    private RespValue handleExpire(List<RespValue> command) {
-        String key = extractString(command, 1);
-        String seconds = extractString(command, 2);
-
-        if (key == null || seconds == null) {
-            return RespValue.Error.err("wrong number of arguments for 'EXPIRE' command");
-        }
+    private RespValue handleExpire(Command command) {
+        String key = command.requeireString(0);
+        String seconds = command.requeireString(1);
 
         try {
             long ttl = Long.parseLong(seconds);
@@ -126,39 +102,22 @@ public class CommandHandler {
         }
     }
 
-    private RespValue handleExpireAt(List<RespValue> command) {
-        String key = extractString(command, 1);
-        String epochStr = extractString(command, 2);
-
-        if (key == null || epochStr == null) {
-            return RespValue.Error.err("wrong number of arguments for 'EXPIREAT' command");
-        }
+    private RespValue handleExpireAt(Command command) {
+        String key = command.requeireString(0);
+        String epochStr = command.requeireString(1);
 
         try {
-            long epoch = Long.parseLong(epochStr);
+            long epochSeconds = Long.parseLong(epochStr);
+            long epoch = epochSeconds * 1000;
             return new RespValue.Integer(storageEngine.expire(key, epoch) ? 1 : 0);
         } catch (NumberFormatException e) {
             return RespValue.Error.err("value is not an integer or out of range");
         }
     }
 
-    private RespValue handleTtl(List<RespValue> command) {
-        String key = extractString(command, 1);
-        if (key == null) {
-            return RespValue.Error.err("wrong number of arguments for 'TTL' command");
-        }
-
+    private RespValue handleTtl(Command command) {
+        String key = command.requeireString(0);
         return new RespValue.Integer(storageEngine.getTtl(key));
-    }
-
-    private String extractString(List<RespValue> command, int index) {
-        if (command.size() <= index) {
-            return null;
-        }
-        if (!(command.get(index) instanceof RespValue.BulkString(String value))) {
-            return null;
-        }
-        return value;
     }
 
     private void appendAof(List<RespValue> command) {
