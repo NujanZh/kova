@@ -28,7 +28,10 @@ public class CommandHandler {
     }
 
     public RespValue handle(RespValue input) {
-        if (!(input instanceof RespValue.Array(List<RespValue> elements)) || elements.isEmpty()) {
+
+        if (!(input instanceof RespValue.Array(List<RespValue> elements))
+                || elements == null
+                || elements.isEmpty()) {
             log.warn("Received malformed command - expected non-empty array, got: {}", input);
             return RespValue.Error.err("expected array command");
         }

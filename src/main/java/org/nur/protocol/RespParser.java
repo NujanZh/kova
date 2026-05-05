@@ -132,6 +132,11 @@ public class RespParser {
 
             while ((b = reader.read()) != -1) {
                 seenAnyByte = true;
+
+                if (b == '\n') {
+                    throw new RespProtocolException("Unexpected \\n without preceding \\r");
+                }
+
                 if (b == '\r') {
                     int next = reader.read();
                     if (next == '\n') {

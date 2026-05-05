@@ -12,6 +12,10 @@ public record Command(String name, List<RespValue> args) {
             return null;
         }
 
+        if (name == null) {
+            return null;
+        }
+
         return new Command(name.toUpperCase(), elements.subList(1, elements.size()));
     }
 
