@@ -8,6 +8,7 @@ import org.nur.storage.StorageEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class CommandHandler {
@@ -67,18 +68,18 @@ public class CommandHandler {
     }
 
     private RespValue handleSet(Command command) {
-        String key = command.requeireString(0);
-        String value = command.requeireString(1);
+        String key = command.requireString(0);
+        String value = command.requireString(1);
 
         storageEngine.set(key, value);
-        appendAof(command.args());
+        appendAof(command);
 
         log.debug("SET '{}' = '{}'", key, value);
         return new RespValue.SimpleString("OK");
     }
 
     private RespValue handleGet(Command command) {
-        String key = command.requeireString(0);
+        String key = command.requireString(0);
         String value = storageEngine.get(key);
 
         if (value == null) {
@@ -87,15 +88,15 @@ public class CommandHandler {
             log.debug("GET '{}' -> '{}'", key, value);
         }
 
-        return new RespValue.BulkString(storageEngine.get(key));
+        return new RespValue.BulkString(value);
     }
 
     private RespValue handleDel(Command command) {
-        String key = command.requeireString(0);
+        String key = command.requireString(0);
         boolean deleted = storageEngine.delete(key);
 
         if (deleted) {
-            appendAof(command.args());
+            appendAof(command);
             log.debug("DEL '{}' -> deleted", key);
         } else {
             log.debug("DEL '{}' -> not found", key);
@@ -105,7 +106,7 @@ public class CommandHandler {
     }
 
     private RespValue handleExists(Command command) {
-        String key = command.requeireString(0);
+        String key = command.requireString(0);
         boolean exists = storageEngine.exists(key);
 
         log.debug("EXISTS '{}' -> {}", key, exists);
@@ -114,8 +115,8 @@ public class CommandHandler {
     }
 
     private RespValue handleExpire(Command command) {
-        String key = command.requeireString(0);
-        String seconds = command.requeireString(1);
+        String key = command.requireString(0);
+        String seconds = command.requireString(1);
 
         try {
             long ttl = Long.parseLong(seconds);
@@ -125,10 +126,10 @@ public class CommandHandler {
             if (updated) {
                 List<RespValue> aofCommand =
                         List.of(
-                                new RespValue.BulkString("EXPIREAT"),
                                 new RespValue.BulkString(key),
-                                new RespValue.BulkString(String.valueOf(absoluteTtl)));
-                appendAof(aofCommand);
+                                new RespValue.BulkString(String.valueOf(absoluteTtl / 1000)));
+
+                appendAof(new Command("EXPIREAT", aofCommand));
                 log.debug("EXPIRE '{}' in {}s (at epoch ms {})", key, ttl, absoluteTtl);
             } else {
                 log.debug("EXPIRE '{}' -> not found", key);
@@ -142,8 +143,8 @@ public class CommandHandler {
     }
 
     private RespValue handleExpireAt(Command command) {
-        String key = command.requeireString(0);
-        String epochStr = command.requeireString(1);
+        String key = command.requireString(0);
+        String epochStr = command.requireString(1);
 
         try {
             long epochSeconds = Long.parseLong(epochStr);
@@ -156,7 +157,7 @@ public class CommandHandler {
                 log.debug("EXPIREAT '{}' -> key not found", key);
             }
 
-            return new RespValue.Integer(storageEngine.expire(key, epochMillis) ? 1 : 0);
+            return new RespValue.Integer(updated ? 1 : 0);
         } catch (NumberFormatException e) {
             log.warn("EXPIREAT received non-integer epoch: '{}'", epochStr);
             return RespValue.Error.err("value is not an integer or out of range");
@@ -164,14 +165,19 @@ public class CommandHandler {
     }
 
     private RespValue handleTtl(Command command) {
-        String key = command.requeireString(0);
+        String key = command.requireString(0);
         return new RespValue.Integer(storageEngine.getTtl(key));
     }
 
-    private void appendAof(List<RespValue> command) {
+    private void appendAof(Command command) {
         if (aofWriter == null) return;
+
+        List<RespValue> full = new ArrayList<>();
+        full.add(new RespValue.BulkString(command.name()));
+        full.addAll(command.args());
+
         try {
-            aofWriter.append(new RespValue.Array(command));
+            aofWriter.append(new RespValue.Array(full));
         } catch (AofQueueFullException e) {
             log.error("AOF queue full, write may be lost for command: {}", command);
             throw e;

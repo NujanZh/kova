@@ -16,7 +16,7 @@ public class AofLoader {
 
     private static final Logger log = LoggerFactory.getLogger(AofLoader.class);
 
-    public final CommandHandler handler;
+    private final CommandHandler handler;
 
     public AofLoader(CommandHandler handler) {
         this.handler = handler;
